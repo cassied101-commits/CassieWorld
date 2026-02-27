@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cassie's World — Food & Health</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">🌿</div>
+        <div class="brand-text">
+          <h1>Cassie's World</h1>
+          <p>Food &amp; Health</p>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-view="meal-plan">
+          <span class="nav-icon">📅</span>
+          <span>Weekly Plan</span>
+        </button>
+        <button class="nav-item" data-view="nutrition">
+          <span class="nav-icon">📊</span>
+          <span>Nutrition</span>
+        </button>
+        <button class="nav-item" data-view="shopping">
+          <span class="nav-icon">🛒</span>
+          <span>Shopping List</span>
+        </button>
+        <button class="nav-item" data-view="recipes">
+          <span class="nav-icon">📖</span>
+          <span>Recipes &amp; Prep</span>
+        </button>
+        <button class="nav-item" data-view="preferences">
+          <span class="nav-icon">⚙️</span>
+          <span>My Preferences</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="week-badge">
+          <span class="week-label">Current Week</span>
+          <span class="week-dates" id="week-dates"></span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="content" id="content">
+      <!-- Rendered by app.js -->
+    </main>
+
+  </div>
+
+  <!-- MEAL EDIT MODAL -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal" id="meal-modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Choose a Meal</h3>
+        <button class="modal-close" id="modal-close">×</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
