@@ -491,7 +491,10 @@ function buildMealPlanView() {
     const isToday = day === today;
     const dateNum = getDayDate(i);
     const meals = state.mealPlan[day] || {};
-    const dayCals = ['breakfast', 'lunch', 'dinner'].reduce((s, t) => s + (meals[t]?.calories || 0), 0);
+    const dayCals    = ['breakfast', 'lunch', 'dinner'].reduce((s, t) => s + (meals[t]?.calories || 0), 0);
+    const dayProtein = ['breakfast', 'lunch', 'dinner'].reduce((s, t) => s + (meals[t]?.protein  || 0), 0);
+    const dayCarbs   = ['breakfast', 'lunch', 'dinner'].reduce((s, t) => s + (meals[t]?.carbs    || 0), 0);
+    const dayFat     = ['breakfast', 'lunch', 'dinner'].reduce((s, t) => s + (meals[t]?.fat      || 0), 0);
 
     const slot = (type) => {
       const meal = meals[type];
@@ -499,7 +502,13 @@ function buildMealPlanView() {
         return `<div class="meal-slot" data-day="${day}" data-type="${type}" role="button">
           <div class="meal-type-label">${type}</div>
           <div class="meal-name">${meal.name}</div>
-          <div class="meal-macros">${meal.calories} kcal · ${meal.protein}g P</div>
+          <div class="meal-macros">
+            <span class="macro-chip" style="color:var(--color-protein)">${meal.protein}P</span>
+            <span style="color:var(--border-dark)">·</span>
+            <span class="macro-chip" style="color:var(--color-carbs)">${meal.carbs}C</span>
+            <span style="color:var(--border-dark)">·</span>
+            <span class="macro-chip" style="color:var(--color-fat)">${meal.fat}F</span>
+          </div>
         </div>`;
       }
       return `<div class="meal-slot-empty" data-day="${day}" data-type="${type}" role="button">
@@ -516,8 +525,8 @@ function buildMealPlanView() {
       ${slot('lunch')}
       ${slot('dinner')}
       ${dayCals > 0 ? `<div class="day-total-pill">
-        <div class="day-total-cals">${dayCals}</div>
-        <div class="day-total-label">kcal</div>
+        <div class="day-total-cals">${dayCals} <span style="font-size:9px;opacity:0.6">kcal</span></div>
+        <div class="day-total-macros">${dayProtein}P · ${dayCarbs}C · ${dayFat}F</div>
       </div>` : ''}
     </div>`;
   }).join('');
@@ -1235,6 +1244,40 @@ document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('modal-overlay')) closeModal();
 });
+
+// ============================================
+// SIDEBAR TOGGLE (mobile)
+// ============================================
+
+(function () {
+  const toggleBtn = document.getElementById('sidebar-toggle');
+  const backdrop  = document.getElementById('sidebar-backdrop');
+  const sidebar   = document.querySelector('.sidebar');
+
+  function openSidebar() {
+    sidebar.classList.add('open');
+    backdrop.classList.add('open');
+    toggleBtn.classList.add('open');
+  }
+
+  function closeSidebar() {
+    sidebar.classList.remove('open');
+    backdrop.classList.remove('open');
+    toggleBtn.classList.remove('open');
+  }
+
+  function toggle() {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  }
+
+  if (toggleBtn) toggleBtn.addEventListener('click', toggle);
+  if (backdrop)  backdrop.addEventListener('click', closeSidebar);
+
+  // Close sidebar when a nav item is tapped on mobile
+  document.querySelector('.sidebar-nav').addEventListener('click', () => {
+    if (window.innerWidth < 768) closeSidebar();
+  });
+})();
 
 // ============================================
 // BOOT
