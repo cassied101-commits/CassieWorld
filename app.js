@@ -327,7 +327,7 @@ const MEALS = {
 };
 
 // ============================================
-// STATE & PERSISTENCE
+// CONSTANTS
 // ============================================
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -346,41 +346,160 @@ const DEFAULT_PREFS = {
   notes: '',
 };
 
-function generateWeekPlan() {
+// ============================================
+// WEEK UTILITIES
+// ============================================
+
+// Returns the ISO date string (YYYY-MM-DD) of the Monday of a given date.
+function getMondayKey(date) {
+  const d = new Date(date || Date.now());
+  const day = d.getDay(); // 0=Sun
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().split('T')[0];
+}
+
+// Human-readable label: "Apr 7 – Apr 13"
+function getWeekLabel(weekKey) {
+  const mon = new Date(weekKey + 'T12:00:00');
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${fmt(mon)} – ${fmt(sun)}`;
+}
+
+// Full label with year if not current year: "Apr 7 – 13, 2025"
+function getWeekLabelFull(weekKey) {
+  const mon = new Date(weekKey + 'T12:00:00');
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const year = mon.getFullYear() !== new Date().getFullYear() ? `, ${mon.getFullYear()}` : '';
+  return `${fmt(mon)} – ${fmt(sun)}${year}`;
+}
+
+// Generate a smart week plan that avoids repeating meals from the last 4 weeks.
+// Also avoids repeating the same meal twice within the new week.
+function generateSmartWeekPlan(weekKey) {
+  // Collect IDs used in the most recent 4 stored weeks (excluding weekKey itself)
+  const recentIds = new Set();
+  Object.keys(state.weekHistory)
+    .filter(k => k !== weekKey)
+    .sort()
+    .slice(-4)
+    .forEach(k => {
+      DAYS.forEach(day => {
+        ['breakfast', 'lunch', 'dinner'].forEach(type => {
+          const id = state.weekHistory[k]?.[day]?.[type]?.id;
+          if (id) recentIds.add(id);
+        });
+      });
+    });
+
+  // Build a pool for each meal type, falling back to all meals if pool is too small
+  function pool(type) {
+    const filtered = MEALS[type].filter(m => !recentIds.has(m.id));
+    return filtered.length >= 4 ? filtered : [...MEALS[type]];
+  }
+
   const plan = {};
-  DAYS.forEach((day, i) => {
-    const bi = (i * 3) % MEALS.breakfast.length;
-    const li = (i * 2) % MEALS.lunch.length;
-    const di = (i * 4) % MEALS.dinner.length;
-    plan[day] = {
-      breakfast: MEALS.breakfast[bi],
-      lunch: MEALS.lunch[li],
-      dinner: MEALS.dinner[di],
-    };
+  const usedThisWeek = { breakfast: new Set(), lunch: new Set(), dinner: new Set() };
+
+  DAYS.forEach(day => {
+    plan[day] = {};
+    ['breakfast', 'lunch', 'dinner'].forEach(type => {
+      // Prefer meals not yet used this week
+      let candidates = pool(type).filter(m => !usedThisWeek[type].has(m.id));
+      if (candidates.length === 0) candidates = pool(type);
+      const meal = candidates[Math.floor(Math.random() * candidates.length)];
+      plan[day][type] = meal;
+      usedThisWeek[type].add(meal.id);
+    });
   });
+
   return plan;
 }
 
+// ============================================
+// PERSISTENCE
+// ============================================
+
 function loadState() {
+  // Try v2 (week-history format)
   try {
-    const raw = localStorage.getItem('cassieworld_v1');
+    const raw = localStorage.getItem('cassieworld_v2');
     if (raw) return JSON.parse(raw);
   } catch (_) {}
+
+  // Migrate from v1 (single mealPlan format)
+  try {
+    const v1raw = localStorage.getItem('cassieworld_v1');
+    if (v1raw) {
+      const old = JSON.parse(v1raw);
+      const key = getMondayKey();
+      return {
+        prefs: old.prefs || { ...DEFAULT_PREFS },
+        weekHistory: { [key]: old.mealPlan || {} },
+        shoppingChecked: old.shoppingChecked || {},
+        customItems: old.customItems || [],
+      };
+    }
+  } catch (_) {}
+
   return {
     prefs: { ...DEFAULT_PREFS },
-    mealPlan: generateWeekPlan(),
+    weekHistory: {},
     shoppingChecked: {},
     customItems: [],
   };
 }
 
 function saveState() {
-  localStorage.setItem('cassieworld_v1', JSON.stringify(state));
+  localStorage.setItem('cassieworld_v2', JSON.stringify(state));
 }
 
 let state = loadState();
 let currentView = 'meal-plan';
 let nutritionDay = DAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1] || 'Monday';
+
+// The week currently shown in the meal plan view (may differ from the actual current week)
+let viewingWeekKey = getMondayKey();
+
+// ============================================
+// PLAN ACCESS
+// ============================================
+
+// Returns the plan for the actual current week, creating a smart plan if none exists.
+function getCurrentPlan() {
+  const key = getMondayKey();
+  if (!state.weekHistory[key]) {
+    state.weekHistory[key] = generateSmartWeekPlan(key);
+    saveState();
+  }
+  return state.weekHistory[key];
+}
+
+// Returns the plan for whichever week is being viewed (may be a past week).
+function getViewedPlan() {
+  if (!state.weekHistory[viewingWeekKey]) {
+    // Only auto-generate for the true current week
+    if (viewingWeekKey === getMondayKey()) {
+      state.weekHistory[viewingWeekKey] = generateSmartWeekPlan(viewingWeekKey);
+      saveState();
+    } else {
+      return {};
+    }
+  }
+  return state.weekHistory[viewingWeekKey];
+}
+
+function isViewingCurrentWeek() {
+  return viewingWeekKey === getMondayKey();
+}
+
+function getSortedWeekKeys() {
+  return Object.keys(state.weekHistory).sort();
+}
 
 // ============================================
 // UTILITIES
@@ -402,12 +521,17 @@ function getWeekDates() {
   return `${fmt(monday)} – ${fmt(sunday)}`;
 }
 
-function getDayDate(dayIndex) {
-  const now = new Date();
-  const todayIdx = now.getDay() === 0 ? 6 : now.getDay() - 1;
-  const d = new Date(now);
-  d.setDate(now.getDate() + (dayIndex - todayIdx));
+// Date number for a given day index within the *viewed* week
+function getDayDateForWeek(dayIndex, weekKey) {
+  const mon = new Date((weekKey || getMondayKey()) + 'T12:00:00');
+  const d = new Date(mon);
+  d.setDate(mon.getDate() + dayIndex);
   return d.getDate();
+}
+
+// Keep for any callers that still pass just an index (nutrition day-pills etc.)
+function getDayDate(dayIndex) {
+  return getDayDateForWeek(dayIndex, getMondayKey());
 }
 
 function clamp(val, min, max) {
@@ -418,38 +542,34 @@ function pct(val, max) {
   return Math.round(clamp((val / max) * 100, 0, 100));
 }
 
-function getDayNutrition(day) {
-  const meals = state.mealPlan[day] || {};
+// Accept an optional plan argument so callers can pass any week's plan
+function getDayNutrition(day, plan) {
+  const meals = (plan || getCurrentPlan())[day] || {};
   let cals = 0, protein = 0, carbs = 0, fat = 0, fiber = 0;
   ['breakfast', 'lunch', 'dinner'].forEach(t => {
     const m = meals[t];
     if (m) {
-      cals += m.calories;
-      protein += m.protein;
-      carbs += m.carbs;
-      fat += m.fat;
-      fiber += m.fiber;
+      cals += m.calories; protein += m.protein;
+      carbs += m.carbs;   fat += m.fat; fiber += m.fiber;
     }
   });
   return { cals, protein, carbs, fat, fiber };
 }
 
-function getWeekNutritionAvg() {
+function getWeekNutritionAvg(plan) {
+  const p = plan || getCurrentPlan();
   let totCals = 0, totProt = 0, totCarbs = 0, totFat = 0, totFiber = 0;
   DAYS.forEach(day => {
-    const n = getDayNutrition(day);
-    totCals += n.cals;
-    totProt += n.protein;
-    totCarbs += n.carbs;
-    totFat += n.fat;
-    totFiber += n.fiber;
+    const n = getDayNutrition(day, p);
+    totCals += n.cals; totProt += n.protein;
+    totCarbs += n.carbs; totFat += n.fat; totFiber += n.fiber;
   });
   return {
-    cals: Math.round(totCals / 7),
-    protein: Math.round(totProt / 7),
-    carbs: Math.round(totCarbs / 7),
-    fat: Math.round(totFat / 7),
-    fiber: Math.round(totFiber / 7),
+    cals:    Math.round(totCals  / 7),
+    protein: Math.round(totProt  / 7),
+    carbs:   Math.round(totCarbs / 7),
+    fat:     Math.round(totFat   / 7),
+    fiber:   Math.round(totFiber / 7),
   };
 }
 
@@ -458,7 +578,9 @@ function getWeekNutritionAvg() {
 // ============================================
 
 function render() {
-  document.getElementById('week-dates').textContent = getWeekDates();
+  // Ensure the current week has a plan on every boot
+  getCurrentPlan();
+  document.getElementById('week-dates').textContent = getWeekLabel(getMondayKey());
   renderView(currentView);
 }
 
@@ -484,22 +606,32 @@ function renderView(view) {
 // ============================================
 
 function buildMealPlanView() {
-  const avg = getWeekNutritionAvg();
-  const today = todayName();
+  const viewedPlan  = getViewedPlan();
+  const avg         = getWeekNutritionAvg(viewedPlan);
+  const isCurrent   = isViewingCurrentWeek();
+  const today       = isCurrent ? todayName() : null;
+
+  // Week navigation state
+  const sortedKeys  = getSortedWeekKeys();
+  const viewIdx     = sortedKeys.indexOf(viewingWeekKey);
+  const hasPrev     = viewIdx > 0;
+  const hasNext     = viewIdx < sortedKeys.length - 1;
 
   const dayColumns = DAYS.map((day, i) => {
-    const isToday = day === today;
-    const dateNum = getDayDate(i);
-    const meals = state.mealPlan[day] || {};
-    const dayCals    = ['breakfast', 'lunch', 'dinner'].reduce((s, t) => s + (meals[t]?.calories || 0), 0);
-    const dayProtein = ['breakfast', 'lunch', 'dinner'].reduce((s, t) => s + (meals[t]?.protein  || 0), 0);
-    const dayCarbs   = ['breakfast', 'lunch', 'dinner'].reduce((s, t) => s + (meals[t]?.carbs    || 0), 0);
-    const dayFat     = ['breakfast', 'lunch', 'dinner'].reduce((s, t) => s + (meals[t]?.fat      || 0), 0);
+    const isToday  = day === today;
+    const dateNum  = getDayDateForWeek(i, viewingWeekKey);
+    const meals    = viewedPlan[day] || {};
+    const dayCals    = ['breakfast','lunch','dinner'].reduce((s,t) => s + (meals[t]?.calories||0), 0);
+    const dayProtein = ['breakfast','lunch','dinner'].reduce((s,t) => s + (meals[t]?.protein ||0), 0);
+    const dayCarbs   = ['breakfast','lunch','dinner'].reduce((s,t) => s + (meals[t]?.carbs   ||0), 0);
+    const dayFat     = ['breakfast','lunch','dinner'].reduce((s,t) => s + (meals[t]?.fat     ||0), 0);
 
     const slot = (type) => {
       const meal = meals[type];
+      // Past weeks are read-only (no data-day/data-type click targets)
+      const clickable = isCurrent ? `data-day="${day}" data-type="${type}" role="button"` : '';
       if (meal) {
-        return `<div class="meal-slot" data-day="${day}" data-type="${type}" role="button">
+        return `<div class="meal-slot${isCurrent ? '' : ' past'}" ${clickable}>
           <div class="meal-type-label">${type}</div>
           <div class="meal-name">${meal.name}</div>
           <div class="meal-macros">
@@ -511,6 +643,7 @@ function buildMealPlanView() {
           </div>
         </div>`;
       }
+      if (!isCurrent) return `<div class="meal-slot-empty past"><span>No meal logged</span></div>`;
       return `<div class="meal-slot-empty" data-day="${day}" data-type="${type}" role="button">
         <span>+ Add ${type}</span>
       </div>`;
@@ -534,11 +667,23 @@ function buildMealPlanView() {
   return `
     <div class="page-header">
       <h2>Weekly Meal Plan</h2>
-      <p>Click any meal to swap it · ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+      <p>${isCurrent
+        ? `Click any meal to swap it · ${new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' })}`
+        : `Viewing past week — read only`
+      }</p>
       <div class="header-actions">
-        <button class="btn btn-primary" id="btn-shuffle">🔀 Shuffle Week</button>
+        ${isCurrent ? `<button class="btn btn-primary" id="btn-shuffle">🔀 Shuffle Week</button>` : ''}
         <button class="btn btn-secondary" id="btn-to-shopping">🛒 Shopping List</button>
       </div>
+    </div>
+
+    <div class="week-nav">
+      <button class="week-nav-btn" id="btn-prev-week" ${hasPrev ? '' : 'disabled'}>← Prev</button>
+      <div class="week-nav-center">
+        <div class="week-nav-badge${isCurrent ? ' current' : ''}">${isCurrent ? 'Current Week' : 'Past Week'}</div>
+        <div class="week-nav-label">Week of ${getWeekLabelFull(viewingWeekKey)}</div>
+      </div>
+      <button class="week-nav-btn" id="btn-next-week" ${hasNext ? '' : 'disabled'}>Next →</button>
     </div>
 
     <div class="stats-bar">
@@ -601,7 +746,7 @@ function buildNutritionView() {
     </div>`;
   }
 
-  const meals = state.mealPlan[nutritionDay] || {};
+  const meals = getCurrentPlan()[nutritionDay] || {};
   const breakdown = ['breakfast', 'lunch', 'dinner'].map(type => {
     const m = meals[type];
     if (!m) return '';
@@ -730,8 +875,9 @@ function buildShoppingList() {
   const cats = {};
   Object.keys(CAT_MAP).forEach(k => { cats[k] = {}; });
 
+  const currentPlanForShopping = getCurrentPlan();
   DAYS.forEach(day => {
-    const meals = state.mealPlan[day] || {};
+    const meals = currentPlanForShopping[day] || {};
     ['breakfast', 'lunch', 'dinner'].forEach(type => {
       const meal = meals[type];
       if (meal?.ingredients) {
@@ -1031,7 +1177,7 @@ function buildPreferencesView() {
 // ============================================
 
 function openMealModal(day, type) {
-  const current = state.mealPlan[day]?.[type];
+  const current = getCurrentPlan()[day]?.[type];
   const options = MEALS[type];
 
   document.getElementById('modal-title').textContent = `${day} · ${type.charAt(0).toUpperCase() + type.slice(1)}`;
@@ -1055,8 +1201,10 @@ function openMealModal(day, type) {
     el.addEventListener('click', () => {
       const meal = MEALS[type].find(m => m.id === el.dataset.mealId);
       if (!meal) return;
-      if (!state.mealPlan[day]) state.mealPlan[day] = {};
-      state.mealPlan[day][type] = meal;
+      const key = getMondayKey();
+      if (!state.weekHistory[key]) state.weekHistory[key] = {};
+      if (!state.weekHistory[key][day]) state.weekHistory[key][day] = {};
+      state.weekHistory[key][day][type] = meal;
       saveState();
       closeModal();
       renderView('meal-plan');
@@ -1079,20 +1227,33 @@ function bindViewListeners(view) {
   });
 
   if (view === 'meal-plan') {
+    // Only allow editing current week
     document.querySelectorAll('.meal-slot, .meal-slot-empty').forEach(el => {
-      el.addEventListener('click', () => openMealModal(el.dataset.day, el.dataset.type));
+      el.addEventListener('click', () => {
+        if (!isViewingCurrentWeek()) return;
+        openMealModal(el.dataset.day, el.dataset.type);
+      });
+    });
+
+    // Week navigation
+    document.getElementById('btn-prev-week')?.addEventListener('click', () => {
+      const keys = getSortedWeekKeys();
+      const idx = keys.indexOf(viewingWeekKey);
+      if (idx > 0) { viewingWeekKey = keys[idx - 1]; renderView('meal-plan'); }
+    });
+
+    document.getElementById('btn-next-week')?.addEventListener('click', () => {
+      const keys = getSortedWeekKeys();
+      const idx = keys.indexOf(viewingWeekKey);
+      if (idx < keys.length - 1) { viewingWeekKey = keys[idx + 1]; renderView('meal-plan'); }
     });
 
     document.getElementById('btn-shuffle')?.addEventListener('click', () => {
-      DAYS.forEach(day => {
-        const b = MEALS.breakfast[Math.floor(Math.random() * MEALS.breakfast.length)];
-        const l = MEALS.lunch[Math.floor(Math.random() * MEALS.lunch.length)];
-        const d = MEALS.dinner[Math.floor(Math.random() * MEALS.dinner.length)];
-        state.mealPlan[day] = { breakfast: b, lunch: l, dinner: d };
-      });
+      const key = getMondayKey();
+      state.weekHistory[key] = generateSmartWeekPlan(key);
       saveState();
       renderView('meal-plan');
-      toast('Week shuffled!', '🔀');
+      toast('New week generated — no repeats from last 4 weeks!', '🔀');
     });
 
     document.getElementById('btn-to-shopping')?.addEventListener('click', () => renderView('shopping'));

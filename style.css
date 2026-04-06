@@ -1591,6 +1591,88 @@ body {
 }
 
 /* ============================================
+   WEEK NAVIGATION
+   ============================================ */
+
+.week-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  box-shadow: var(--shadow);
+}
+
+.week-nav-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-medium);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 12px;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1.4;
+}
+
+.week-nav-btn:hover:not(:disabled) {
+  background: var(--accent-pale);
+  border-color: var(--accent-light);
+  color: var(--accent-dark);
+}
+
+.week-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.week-nav-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.week-nav-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dark);
+  letter-spacing: 0.2px;
+}
+
+.week-nav-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(201,169,110,0.15);
+  color: var(--accent-gold);
+}
+
+.week-nav-badge:not(.current) {
+  background: rgba(140,134,128,0.12);
+  color: var(--text-light);
+}
+
+.meal-slot.past,
+.meal-slot-empty.past {
+  cursor: default;
+  opacity: 0.82;
+}
+
+.meal-slot.past:hover,
+.meal-slot-empty.past:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* ============================================
    UTILITY
    ============================================ */
 
